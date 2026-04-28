@@ -520,9 +520,12 @@
   <span class="bot-bar-label">View:</span>
   <button class="bot-chip active" data-bot="all">All Bots</button>
   <span id="bot-chips"></span>
+  <button class="bot-chip" data-view="polymarket">Polymarket Whale</button>
 </nav>
 
 <main>
+
+  <div id="view-kalshi">
 
   <section class="hero fade-in">
     <div class="hero-card">
@@ -606,6 +609,89 @@
     </div>
   </section>
 
+  </div><!-- /view-kalshi -->
+
+  <!-- ═══════════════════════════════════════════════════════════
+       POLYMARKET WHALE BOT VIEW
+       ═══════════════════════════════════════════════════════════ -->
+  <div id="view-polymarket" style="display:none;">
+
+    <section class="hero fade-in">
+      <div class="hero-card">
+        <div class="hero-label">Bot Mode</div>
+        <div class="hero-number" style="font-size:64px;">
+          <span id="pm-mode">—</span>
+        </div>
+        <div class="hero-delta">
+          <span class="delta-pill neu" id="pm-status">awaiting data</span>
+          <span style="color: var(--fog);">last cycle <span id="pm-last-cycle">—</span></span>
+        </div>
+      </div>
+      <div class="hero-card">
+        <div class="hero-label">Paper Trades · 24h</div>
+        <div class="hero-number"><span id="pm-paper-count">—</span></div>
+        <div class="hero-delta">
+          <span class="delta-pill neu" id="pm-match-rate">— match rate</span>
+          <span style="color: var(--fog);">whales monitored: <span id="pm-whales-count">—</span></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="strip fade-in">
+      <div class="strip-card">
+        <div class="strip-label">
+          <span class="dot" id="pm-bot-dot"></span> Bot Health
+        </div>
+        <div class="strip-value" id="pm-bot-health">—</div>
+        <div class="strip-sub" id="pm-bot-sub">awaiting heartbeat</div>
+      </div>
+      <div class="strip-card">
+        <div class="strip-label">Signals Detected · 24h</div>
+        <div class="strip-value" id="pm-detected-24h">—</div>
+        <div class="strip-sub" id="pm-detected-sub">across all whales</div>
+      </div>
+      <div class="strip-card">
+        <div class="strip-label">Top Skip Reason · 24h</div>
+        <div class="strip-value" id="pm-skip-reason" style="font-size:18px;">—</div>
+        <div class="strip-sub" id="pm-skip-pct">—</div>
+      </div>
+      <div class="strip-card">
+        <div class="strip-label">
+          <span class="dot" id="pm-go-live-dot"></span> Live-Ready?
+        </div>
+        <div class="strip-value" id="pm-go-live" style="font-size:22px;">—</div>
+        <div class="strip-sub" id="pm-go-live-sub">evaluating</div>
+      </div>
+    </section>
+
+    <section class="section fade-in">
+      <div class="section-head">
+        <h2 class="section-title">Active Whales</h2>
+        <span class="section-meta" id="pm-whales-meta">—</span>
+      </div>
+      <div class="strat-grid" id="pm-whales-grid"></div>
+    </section>
+
+    <section class="section fade-in">
+      <div class="section-head">
+        <h2 class="section-title">Recent Whale Signals</h2>
+        <span class="section-meta">last 30 detected · all statuses</span>
+      </div>
+      <div class="feed-card">
+        <div class="feed-head" style="grid-template-columns: 70px 1fr 80px 80px 80px 100px;">
+          <div>Time</div>
+          <div>Whale · Market</div>
+          <div>Side</div>
+          <div>Whale $</div>
+          <div>Price</div>
+          <div>Status</div>
+        </div>
+        <div id="pm-feed-body"></div>
+      </div>
+    </section>
+
+  </div><!-- /view-polymarket -->
+
 </main>
 
 <footer>
@@ -624,10 +710,18 @@ const SUPABASE_URL = "https://tnhraaykcoqdamyzctcs.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_oA0gCSBDTViNUqf_4QNbLQ_vsuirvDX";
 
 /* ————————————————————————————————————————————————
+   POLYMARKET WHALE BOT — separate Supabase project
+   Uses anon key (read-only via RLS policies)
+   ———————————————————————————————————————————————— */
+const SUPABASE_PM_URL = "https://ctvyrddvtqsynhlgmqsj.supabase.co";
+const SUPABASE_PM_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN0dnlyZGR2dHFzeW5obGdtcXNqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5ODQzOTAsImV4cCI6MjA5MjU2MDM5MH0.cpZJSgyrD0wiKhdd2D6pVOeoUYizOpCNiWcs3iR4rlE";
+
+/* ————————————————————————————————————————————————
    STATE
    ———————————————————————————————————————————————— */
 let allBots = [];
 let currentBotId = 'all';
+let currentView = 'kalshi';   // 'kalshi' or 'polymarket'
 let refreshTimer = null;
 let balanceChart = null;
 
@@ -639,6 +733,18 @@ async function sb(path) {
     headers: {
       apikey: SUPABASE_ANON_KEY,
       Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+/* Polymarket whale bot — separate Supabase project */
+async function sbpm(path) {
+  const r = await fetch(`${SUPABASE_PM_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SUPABASE_PM_KEY,
+      Authorization: `Bearer ${SUPABASE_PM_KEY}`,
     },
   });
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
@@ -668,7 +774,12 @@ async function loadBots() {
       btn.className = 'bot-chip';
       btn.textContent = b.name;
       btn.dataset.bot = b.id;
-      btn.onclick = () => selectBot(b.id);
+      btn.onclick = () => {
+        if (currentView !== 'kalshi') {
+          selectView('kalshi');
+        }
+        selectBot(b.id);
+      };
       chipsEl.appendChild(btn);
     });
   } catch (e) {
@@ -685,7 +796,31 @@ function selectBot(id) {
   });
   refreshAll();
 }
-document.querySelector('[data-bot="all"]').onclick = () => selectBot('all');
+
+/* ————————————————————————————————————————————————
+   VIEW SWITCHER — Kalshi vs Polymarket
+   ———————————————————————————————————————————————— */
+function selectView(view) {
+  currentView = view;
+  document.querySelectorAll('.bot-chip').forEach(c => c.classList.remove('active'));
+
+  if (view === 'polymarket') {
+    document.querySelector('[data-view="polymarket"]').classList.add('active');
+    document.getElementById('view-kalshi').style.display = 'none';
+    document.getElementById('view-polymarket').style.display = '';
+    refreshPolymarket();
+  } else {
+    document.querySelector('[data-bot="all"]').classList.add('active');
+    document.getElementById('view-kalshi').style.display = '';
+    document.getElementById('view-polymarket').style.display = 'none';
+    selectBot('all');
+  }
+}
+
+// Wire up the view switcher chips. A click on "All Bots" goes back to Kalshi view;
+// a click on "Polymarket Whale" switches to that view.
+document.querySelector('[data-bot="all"]').onclick = () => selectView('kalshi');
+document.querySelector('[data-view="polymarket"]').onclick = () => selectView('polymarket');
 
 /* ————————————————————————————————————————————————
    MAIN REFRESH CYCLE
@@ -946,13 +1081,314 @@ function renderFeed(trades) {
   }).join('');
 }
 
-/* ————————————————————————————————————————————————
-   BOOT
-   ———————————————————————————————————————————————— */
+/* ════════════════════════════════════════════════════════════
+   POLYMARKET WHALE BOT — DATA FETCHING + RENDERING
+   ════════════════════════════════════════════════════════════ */
+async function refreshPolymarket() {
+  try {
+    // Fetch all the data in parallel for speed
+    const cutoff24h = new Date(Date.now() - 24*60*60*1000).toISOString();
+
+    const [botStatus, watched, whaleTrades, paperTrades] = await Promise.all([
+      sbpm(`bot_status?bot_name=eq.polymarket_whale_copier&select=*`),
+      sbpm(`watched_wallets?is_active=eq.true&select=*&order=username.asc`),
+      sbpm(`whale_trades?detected_at=gte.${cutoff24h}&select=*&order=detected_at.desc&limit=200`),
+      sbpm(`paper_trades?placed_at=gte.${cutoff24h}&select=*`),
+    ]);
+
+    renderPMHero(botStatus[0], watched, paperTrades);
+    renderPMStrip(botStatus[0], whaleTrades, paperTrades);
+    renderPMWhales(watched, whaleTrades);
+    renderPMFeed(whaleTrades);
+
+    document.getElementById('last-sync').textContent =
+      new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (e) {
+    console.error('Polymarket refresh failed:', e);
+  }
+}
+
+function renderPMHero(status, watched, paperTrades) {
+  // Mode + status
+  const modeEl = document.getElementById('pm-mode');
+  const statusEl = document.getElementById('pm-status');
+  const lastCycleEl = document.getElementById('pm-last-cycle');
+
+  if (status) {
+    const isDryRun = status.dry_run;
+    modeEl.textContent = isDryRun ? 'PAPER' : 'LIVE';
+    modeEl.style.color = isDryRun ? 'var(--amber)' : 'var(--acid)';
+
+    statusEl.textContent = status.status || '—';
+    statusEl.className = 'delta-pill ' + (
+      status.status === 'RUNNING' ? 'pos' :
+      status.status === 'ERROR' ? 'neg' : 'neu'
+    );
+
+    const lastSeen = new Date(status.last_seen);
+    const ago = Math.round((Date.now() - lastSeen.getTime()) / 1000);
+    lastCycleEl.textContent = ago < 60 ? `${ago}s ago` :
+                              ago < 3600 ? `${Math.round(ago/60)}m ago` :
+                                          `${Math.round(ago/3600)}h ago`;
+  } else {
+    modeEl.textContent = '—';
+    statusEl.textContent = 'no heartbeat';
+    statusEl.className = 'delta-pill neg';
+    lastCycleEl.textContent = '—';
+  }
+
+  // Paper trade count + match rate
+  document.getElementById('pm-paper-count').textContent = paperTrades.length;
+  document.getElementById('pm-whales-count').textContent = watched.length;
+
+  // Match rate calculated in renderPMStrip
+}
+
+function renderPMStrip(status, whaleTrades, paperTrades) {
+  // Bot health
+  const dotEl = document.getElementById('pm-bot-dot');
+  const healthEl = document.getElementById('pm-bot-health');
+  const subEl = document.getElementById('pm-bot-sub');
+
+  if (status && status.status === 'RUNNING') {
+    const lastSeen = new Date(status.last_seen);
+    const minutesAgo = (Date.now() - lastSeen.getTime()) / 60000;
+    if (minutesAgo < 2) {
+      dotEl.className = 'dot green';
+      healthEl.textContent = 'Online';
+      subEl.textContent = `cycle ${status.extra?.cycle || '?'}`;
+    } else if (minutesAgo < 10) {
+      dotEl.className = 'dot amber';
+      healthEl.textContent = 'Slow';
+      subEl.textContent = `last seen ${Math.round(minutesAgo)}m ago`;
+    } else {
+      dotEl.className = 'dot red';
+      healthEl.textContent = 'Stalled';
+      subEl.textContent = `last seen ${Math.round(minutesAgo)}m ago`;
+    }
+  } else {
+    dotEl.className = 'dot red';
+    healthEl.textContent = status?.status || 'Offline';
+    subEl.textContent = 'no recent heartbeat';
+  }
+
+  // Detected count
+  document.getElementById('pm-detected-24h').textContent = whaleTrades.length;
+  const uniqueWhales = new Set(whaleTrades.map(t => t.username)).size;
+  document.getElementById('pm-detected-sub').textContent =
+    `${uniqueWhales} active whale${uniqueWhales === 1 ? '' : 's'}`;
+
+  // Match rate (paper / detected)
+  const matchRate = whaleTrades.length > 0
+    ? (paperTrades.length / whaleTrades.length * 100).toFixed(0)
+    : null;
+  const matchEl = document.getElementById('pm-match-rate');
+  if (matchRate !== null) {
+    matchEl.textContent = `${matchRate}% match rate`;
+    matchEl.className = 'delta-pill ' + (
+      matchRate >= 30 ? 'pos' : matchRate >= 10 ? 'neu' : 'neg'
+    );
+  } else {
+    matchEl.textContent = 'no signals yet';
+    matchEl.className = 'delta-pill neu';
+  }
+
+  // Top skip reason
+  const skipCounts = {};
+  whaleTrades.forEach(t => {
+    if (t.copy_status === 'skipped' && t.skip_reason) {
+      skipCounts[t.skip_reason] = (skipCounts[t.skip_reason] || 0) + 1;
+    }
+  });
+  const sortedSkips = Object.entries(skipCounts).sort((a, b) => b[1] - a[1]);
+  const skipReasonEl = document.getElementById('pm-skip-reason');
+  const skipPctEl = document.getElementById('pm-skip-pct');
+  if (sortedSkips.length > 0) {
+    const [reason, count] = sortedSkips[0];
+    const pct = (count / whaleTrades.length * 100).toFixed(0);
+    skipReasonEl.textContent = reason;
+    skipPctEl.textContent = `${count} signals · ${pct}% of total`;
+  } else {
+    skipReasonEl.textContent = '—';
+    skipPctEl.textContent = 'no skips yet';
+  }
+
+  // Live-ready evaluation
+  evaluateLiveReady(status, whaleTrades, paperTrades);
+}
+
+function evaluateLiveReady(status, whaleTrades, paperTrades) {
+  const dotEl = document.getElementById('pm-go-live-dot');
+  const valEl = document.getElementById('pm-go-live');
+  const subEl = document.getElementById('pm-go-live-sub');
+
+  // Criteria for "Ready"
+  // 1. Bot is running (heartbeat <2 min)
+  // 2. Currently in DRY_RUN (we never auto-recommend going from live to paper)
+  // 3. ≥10 paper trades in 24h
+  // 4. Match rate ≥30%
+  // 5. ≥3 unique whales producing signals
+
+  if (!status) {
+    dotEl.className = 'dot red';
+    valEl.textContent = 'No Data';
+    subEl.textContent = 'bot not reporting';
+    return;
+  }
+
+  const checks = [];
+  const minutesAgo = (Date.now() - new Date(status.last_seen).getTime()) / 60000;
+
+  if (minutesAgo > 5) checks.push('bot stalled');
+  if (paperTrades.length < 10) checks.push(`only ${paperTrades.length}/10 paper trades`);
+
+  const matchRate = whaleTrades.length > 0
+    ? paperTrades.length / whaleTrades.length * 100 : 0;
+  if (matchRate < 30 && whaleTrades.length >= 5) {
+    checks.push(`${matchRate.toFixed(0)}% match rate (need 30%)`);
+  }
+
+  const uniqueWhales = new Set(whaleTrades.map(t => t.username)).size;
+  if (uniqueWhales < 3 && whaleTrades.length >= 5) {
+    checks.push(`only ${uniqueWhales}/3 active whales`);
+  }
+
+  if (!status.dry_run) {
+    dotEl.className = 'dot green';
+    valEl.textContent = 'LIVE';
+    valEl.style.color = 'var(--acid)';
+    subEl.textContent = 'currently trading real money';
+  } else if (checks.length === 0) {
+    dotEl.className = 'dot green';
+    valEl.textContent = 'YES';
+    valEl.style.color = 'var(--acid)';
+    subEl.textContent = 'all health checks pass';
+  } else {
+    dotEl.className = 'dot amber';
+    valEl.textContent = 'NOT YET';
+    valEl.style.color = 'var(--amber)';
+    subEl.textContent = checks[0];
+  }
+}
+
+function renderPMWhales(watched, whaleTrades) {
+  const grid = document.getElementById('pm-whales-grid');
+  document.getElementById('pm-whales-meta').textContent =
+    `${watched.length} active`;
+
+  if (watched.length === 0) {
+    grid.innerHTML = '<div class="empty-note">No active whales. Run watchlist_loader.py.</div>';
+    return;
+  }
+
+  // Group trades by username
+  const tradesByWhale = {};
+  whaleTrades.forEach(t => {
+    if (!tradesByWhale[t.username]) tradesByWhale[t.username] = [];
+    tradesByWhale[t.username].push(t);
+  });
+
+  grid.innerHTML = watched.map(w => {
+    const trades = tradesByWhale[w.username] || [];
+    const detected = trades.length;
+    const paperOk = trades.filter(t => t.copy_status === 'paper_logged').length;
+    const lastSeen = w.last_seen_trade ? new Date(w.last_seen_trade) : null;
+    const lastSeenStr = lastSeen
+      ? formatRelativeTime(lastSeen)
+      : 'awaiting first signal';
+
+    // Determine class based on activity
+    const klass = detected > 0 ? 'winning' :
+                  lastSeen && (Date.now() - lastSeen.getTime()) < 24*3600*1000 ? 'neutral' : 'losing';
+
+    return `
+      <div class="strat-card ${klass}">
+        <div class="strat-head">
+          <div class="strat-name">${w.username}</div>
+          <div class="strat-tag ${detected > 0 ? 'live' : 'paper'}">${detected > 0 ? 'ACTIVE' : 'QUIET'}</div>
+        </div>
+        <div class="strat-rate" style="font-size:36px;">${detected}</div>
+        <div class="strat-stats">
+          <span><b>${paperOk}</b> paper</span>
+          <span style="color:var(--fog);">${lastSeenStr}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderPMFeed(whaleTrades) {
+  const body = document.getElementById('pm-feed-body');
+  const recent = whaleTrades.slice(0, 30);
+
+  if (recent.length === 0) {
+    body.innerHTML = '<div class="empty-note">No whale signals yet. Bot is watching.</div>';
+    return;
+  }
+
+  body.innerHTML = recent.map(t => {
+    const d = new Date(t.detected_at);
+    const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const date = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+    let statusLabel, statusClass;
+    if (t.copy_status === 'paper_logged') {
+      statusLabel = '📝 PAPER';
+      statusClass = 'W';
+    } else if (t.copy_status === 'executed_live') {
+      statusLabel = '✅ LIVE';
+      statusClass = 'W';
+    } else if (t.copy_status === 'skipped') {
+      statusLabel = `⏭️ ${(t.skip_reason || '').slice(0, 12)}`;
+      statusClass = 'L';
+    } else {
+      statusLabel = t.copy_status || '—';
+      statusClass = 'P';
+    }
+
+    const marketTitle = (t.market_title || '').slice(0, 38);
+    const sizeStr = t.whale_size_usd
+      ? `$${Number(t.whale_size_usd).toLocaleString(undefined, {maximumFractionDigits: 0})}`
+      : '—';
+    const priceStr = t.whale_price
+      ? `$${Number(t.whale_price).toFixed(3)}`
+      : '—';
+
+    return `
+      <div class="feed-row" style="grid-template-columns: 70px 1fr 80px 80px 80px 100px;">
+        <div class="feed-time">${time}<br><span style="opacity:.6">${date}</span></div>
+        <div>
+          <span class="feed-strat">${t.username || '—'}</span>
+          <div style="color:var(--fog); font-size:11px; margin-top:2px;">${marketTitle}</div>
+        </div>
+        <div class="feed-side ${t.side}">${t.side || '—'}</div>
+        <div class="feed-price">${sizeStr}</div>
+        <div class="feed-price">${priceStr}</div>
+        <div class="feed-result ${statusClass}" style="font-size:10px;">${statusLabel}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+function formatRelativeTime(date) {
+  const seconds = (Date.now() - date.getTime()) / 1000;
+  if (seconds < 60) return `${Math.round(seconds)}s ago`;
+  if (seconds < 3600) return `${Math.round(seconds/60)}m ago`;
+  if (seconds < 86400) return `${Math.round(seconds/3600)}h ago`;
+  return `${Math.round(seconds/86400)}d ago`;
+}
+
+/* ———————————————————————————————————————————————— */
 async function boot() {
   await loadBots();
   await refreshAll();
-  refreshTimer = setInterval(refreshAll, 30000);
+  refreshTimer = setInterval(() => {
+    if (currentView === 'polymarket') {
+      refreshPolymarket();
+    } else {
+      refreshAll();
+    }
+  }, 30000);
 }
 
 if (SUPABASE_URL.includes('PASTE')) {
